@@ -16,7 +16,7 @@ El trofeo y la cámara se activan al cumplir cualquiera de las siguientes condic
 
 ## 🎥 Demostración en Video
 Mira cómo se ven las recompensas y la cámara en acción aquí:  
-👉 **[PEGA AQUÍ TU ENLACE DE DEMOSTRACIÓN DE VIDEO]**
+👉 **[https://youtu.be/KOCEG10Q_6w]**
 
 ## 📂 Ruta de Instalación
 
