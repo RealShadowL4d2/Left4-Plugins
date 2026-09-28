@@ -22,12 +22,18 @@ Algunos proyectos pueden estar en desarrollo o tener cambios pendientes. La mayo
 - Pruebas y versiones en desarrollo.
 
 ## 🔧 Sobre los proyectos
-
+````
 No soy un programador profesional. Todavía estoy aprendiendo y muchas cosas las voy haciendo mediante prueba y error.
-
+````
+````
 Si algo tiene errores o puede mejorarse, probablemente iré actualizándolo con el tiempo.
+````
 
 ## 📬 Contacto
-
-**Steam:** Shadow-L4d2  
-**Discord:** shadow_l4d2
+<details>
+<summary><b>INFO</b></summary>
+**Steam:**  [Real Shadow]
+**Discord:** [https://discord.gg/stczb58fh]
+**GitHub:** [https://github.com/RealShadowL4d2/Left4-Plugins]
+**Youtube:** [https://youtube.com/@realshadowl4d2]
+<details>
