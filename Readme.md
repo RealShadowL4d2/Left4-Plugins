@@ -1,20 +1,33 @@
-# 🧟‍♂️ Hola, soy RealShadowL4d2
+# 🧟‍♂️ RealShadowL4d2
 
-Bienvenido a mi GitHub. Soy un jugador de **Left 4 Dead 2** que pasa su tiempo libre experimentando y aprendiendo a programar plugins con **SourceMod** y **SourcePawn**. 
+Hola 👋 Soy RealShadowL4d2.
 
-### 📌 Mis Proyectos
-<details>
-<summary><b>Mis Proyectos</b></summary>
+Este GitHub es principalmente para mis cosas de **Left 4 Dead 2**. Me gusta probar plugins, modificar algunas mecánicas del juego y aprender poco a poco **SourceMod y SourcePawn**.
 
-**[Left4-Plugins](https://github.com/RealShadowL4d2/Left4-Plugins)**
-Este es mi repositorio principal donde guardo los scripts que voy armando. No soy un programador experto, hago esto más que nada como pasatiempo para entender mejor el juego. Aquí encontrarás modificaciones prácticas, experimentos con variables y pequeños cambios que hago para darle variedad a las partidas.
-</details>
+## 📌 Mis proyectos
 
-### 🎯 Mi enfoque actual
-* 🎮 **Hobby y Diversión:** Creo modificaciones sencillas para pasar el rato y ver cómo reacciona el juego.
-* 📚 **Práctica constante:** Sigo aprendiendo a usar la sintaxis de SourcePawn paso a paso.
-* 🔧 **Prueba y Error:** Mucho de mi código nace de probar ideas básicas, compilar y ver si funciona en el servidor sin romperse.
+### 🧟 Left4-Plugins
 
-### 📬 Contacto
-* **Steam:** [https://steamcommunity.com/id/Shadow-L4d2/]
-* **Discord:** [shadow_l4d2]
+Aquí voy subiendo los plugins y pruebas que voy haciendo para L4D2.
+
+Algunos proyectos pueden estar en desarrollo o tener cambios pendientes. La mayoría los hago para probar ideas y ver cómo funcionan en el servidor.
+
+## 🎮 ¿Qué encontrarás aquí?
+
+- Plugins para Left 4 Dead 2.
+- Experimentos con SourceMod y SourcePawn.
+- Bosses y nuevas mecánicas.
+- Sistemas de recompensas.
+- Modificaciones para las partidas.
+- Pruebas y versiones en desarrollo.
+
+## 🔧 Sobre los proyectos
+
+No soy un programador profesional. Todavía estoy aprendiendo y muchas cosas las voy haciendo mediante prueba y error.
+
+Si algo tiene errores o puede mejorarse, probablemente iré actualizándolo con el tiempo.
+
+## 📬 Contacto
+
+**Steam:** Shadow-L4d2  
+**Discord:** shadow_l4d2
