@@ -244,7 +244,7 @@ Diseñado para:
 
 - **Left 4 Dead 2**
 - SourceMod
-- Servidores dedicados.
+- No Es Para Servidores dedicados.
 - Listen Server.
 
 ---
