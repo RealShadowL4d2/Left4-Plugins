@@ -1,0 +1,229 @@
+#pragma semicolon 1
+#pragma newdecls required
+
+#include <sourcemod>
+#include <sdktools>
+
+public Plugin myinfo =
+{
+    name = "L4D2 AutoBhop Improved",
+    author = "Shadow L4d2",
+    description = "AutoBhop for the listen-server host only.",
+    version = "2.0",
+    url = ""
+};
+
+ConVar g_hEnabled;
+ConVar g_hReminder;
+
+bool g_bBhopEnabled;
+Handle g_hReminderTimer = null;
+
+public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max)
+{
+    if (GetEngineVersion() != Engine_Left4Dead2)
+    {
+        strcopy(error, err_max, "This plugin only supports Left 4 Dead 2.");
+        return APLRes_SilentFailure;
+    }
+
+    return APLRes_Success;
+}
+
+public void OnPluginStart()
+{
+    LoadTranslations("l4d2_autobhop.phrases");
+
+    g_hEnabled = CreateConVar(
+        "l4d2_autobhop_enabled",
+        "1",
+        "Enable the AutoBhop plugin.",
+        FCVAR_NOTIFY,
+        true,
+        0.0,
+        true,
+        1.0
+    );
+
+    g_hReminder = CreateConVar(
+        "l4d2_autobhop_reminder",
+        "60.0",
+        "Seconds between reminder messages to the listen-server host. Set 0 to disable.",
+        FCVAR_NOTIFY,
+        true,
+        0.0
+    );
+
+    RegConsoleCmd("sm_bhp", Cmd_ToggleBhop, "Toggle AutoBhop (listen-server host only).");
+    RegConsoleCmd("sm_autobhop", Cmd_ToggleBhop, "Toggle AutoBhop (listen-server host only).");
+
+    HookConVarChange(g_hEnabled, ConVarChanged_Enabled);
+    HookConVarChange(g_hReminder, ConVarChanged_Reminder);
+
+    g_bBhopEnabled = g_hEnabled.BoolValue;
+
+    RestartReminderTimer();
+}
+
+public void OnPluginEnd()
+{
+    StopReminderTimer();
+}
+
+public void OnMapStart()
+{
+    RestartReminderTimer();
+}
+
+public void OnMapEnd()
+{
+    StopReminderTimer();
+}
+
+public void ConVarChanged_Enabled(ConVar convar, const char[] oldValue, const char[] newValue)
+{
+    g_bBhopEnabled = convar.BoolValue;
+}
+
+public void ConVarChanged_Reminder(ConVar convar, const char[] oldValue, const char[] newValue)
+{
+    RestartReminderTimer();
+}
+
+void RestartReminderTimer()
+{
+    StopReminderTimer();
+
+    float interval = g_hReminder.FloatValue;
+    if (interval <= 0.0)
+    {
+        return;
+    }
+
+    g_hReminderTimer = CreateTimer(interval, Timer_Reminder, _, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
+}
+
+void StopReminderTimer()
+{
+    if (g_hReminderTimer != null)
+    {
+        delete g_hReminderTimer;
+        g_hReminderTimer = null;
+    }
+}
+
+public Action Timer_Reminder(Handle timer)
+{
+    if (!g_hEnabled.BoolValue || g_bBhopEnabled)
+    {
+        return Plugin_Continue;
+    }
+
+    int host = GetListenServerHost();
+    if (host > 0)
+    {
+        PrintToChat(host, "%T", "Bhop_Reminder", host);
+    }
+
+    return Plugin_Continue;
+}
+
+public Action Cmd_ToggleBhop(int client, int args)
+{
+    if (client <= 0 || client > MaxClients || !IsClientInGame(client))
+    {
+        return Plugin_Handled;
+    }
+
+    if (!IsListenServerHost(client))
+    {
+        PrintToChat(client, "%T", "Host_Only", client);
+        return Plugin_Handled;
+    }
+
+    if (!g_hEnabled.BoolValue)
+    {
+        PrintToChat(client, "%T", "Bhop_Disabled", client);
+        return Plugin_Handled;
+    }
+
+    g_bBhopEnabled = !g_bBhopEnabled;
+
+    if (g_bBhopEnabled)
+    {
+        PrintHintText(client, "%T", "Bhop_Hint_On", client);
+        PrintToChat(client, "%T", "Bhop_Chat_On", client);
+    }
+    else
+    {
+        PrintHintText(client, "%T", "Bhop_Hint_Off", client);
+        PrintToChat(client, "%T", "Bhop_Chat_Off", client);
+    }
+
+    return Plugin_Handled;
+}
+
+public Action OnPlayerRunCmd(
+    int client,
+    int &buttons,
+    int &impulse,
+    float vel[3],
+    float angles[3],
+    int &weapon,
+    int &subtype,
+    int &cmdnum,
+    int &tickcount,
+    int &seed,
+    int mouse[2]
+)
+{
+    if (!g_bBhopEnabled || !g_hEnabled.BoolValue)
+    {
+        return Plugin_Continue;
+    }
+
+    if (!IsValidClient(client) || !IsPlayerAlive(client) || !IsListenServerHost(client))
+    {
+        return Plugin_Continue;
+    }
+
+    int moveType = GetEntityMoveType(client);
+    if (moveType == MOVETYPE_LADDER || moveType == MOVETYPE_NOCLIP || moveType == MOVETYPE_OBSERVER)
+    {
+        return Plugin_Continue;
+    }
+
+    // While the host is airborne, remove the jump command.
+    // When the player lands, the held IN_JUMP is available again,
+    // allowing continuous bunny hopping without repeated key presses.
+    if ((buttons & IN_JUMP) != 0 && (GetEntityFlags(client) & FL_ONGROUND) == 0)
+    {
+        buttons &= ~IN_JUMP;
+        return Plugin_Changed;
+    }
+
+    return Plugin_Continue;
+}
+
+bool IsValidClient(int client)
+{
+    return client >= 1 && client <= MaxClients && IsClientInGame(client);
+}
+
+int GetListenServerHost()
+{
+    // On a listen server, client index 1 is the local host.
+    // Dedicated servers do not have a player at index 1 acting as a host,
+    // so this plugin intentionally does nothing there.
+    if (IsValidClient(1) && !IsFakeClient(1))
+    {
+        return 1;
+    }
+
+    return 0;
+}
+
+bool IsListenServerHost(int client)
+{
+    return client == GetListenServerHost();
+}
