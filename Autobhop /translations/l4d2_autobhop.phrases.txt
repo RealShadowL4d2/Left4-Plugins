@@ -1,0 +1,44 @@
+"Phrases"
+{
+    "Bhop_Reminder"
+    {
+        "en"    "[AutoBhop] OWNER: !bhp / !autobhop | Toggle AutoBhop."
+        "es"    "[AutoBhop] OWNER: !bhp / !autobhop | Activa o desactiva AutoBhop."
+    }
+
+    "Bhop_Hint_On"
+    {
+        "en"    "AutoBhop: ON"
+        "es"    "AutoBhop: ACTIVADO"
+    }
+
+    "Bhop_Chat_On"
+    {
+        "en"    "[AutoBhop] AutoBhop enabled. Hold SPACE to bunny hop."
+        "es"    "[AutoBhop] AutoBhop activado. Mantén ESPACIO para hacer bunny hop."
+    }
+
+    "Bhop_Hint_Off"
+    {
+        "en"    "AutoBhop: OFF"
+        "es"    "AutoBhop: DESACTIVADO"
+    }
+
+    "Bhop_Chat_Off"
+    {
+        "en"    "[AutoBhop] AutoBhop disabled."
+        "es"    "[AutoBhop] AutoBhop desactivado."
+    }
+
+    "Host_Only"
+    {
+        "en"    "[AutoBhop] Only the listen-server host can use this command."
+        "es"    "[AutoBhop] Solo el host del servidor local puede usar este comando."
+    }
+
+    "Bhop_Disabled"
+    {
+        "en"    "[AutoBhop] The plugin is disabled by the server configuration."
+        "es"    "[AutoBhop] El plugin está desactivado por la configuración del servidor."
+    }
+}
