@@ -1,0 +1,660 @@
+#pragma semicolon 1
+#pragma newdecls required
+
+#include <sourcemod>
+#include <sdktools>
+#include <sdkhooks>
+
+#define PLUGIN_VERSION "9.2"
+#define TEAM_SURVIVOR 2
+#define MAX_DIST_GIVE 110.0
+#define COMBO_WINDOW 0.25
+#define PASS_COOLDOWN 0.60
+
+public Plugin myinfo =
+{
+    name = "L4D2 Items Carry Pass Extended",
+    author = "Shadow L4D2",
+    description = "Pasa armas y objetos con SHIFT + CLICK DERECHO; aviso global cada 10 segundos.",
+    version = PLUGIN_VERSION,
+    url = ""
+};
+
+float g_fNextPass[MAXPLAYERS + 1];
+float g_fLastSpeed[MAXPLAYERS + 1];
+float g_fLastAttack2[MAXPLAYERS + 1];
+
+ConVar g_cvEnable;
+ConVar g_cvPrimary;
+ConVar g_cvSecondary;
+ConVar g_cvGrenades;
+ConVar g_cvMedical;
+ConVar g_cvPills;
+ConVar g_cvCarryables;
+ConVar g_cvDistance;
+ConVar g_cvCooldown;
+
+static const char g_sCarryableItems[][] =
+{
+    "weapon_gascan",
+    "weapon_propanetank",
+    "weapon_oxygentank",
+    "weapon_fireworkcrate",
+    "weapon_cola_bottles",
+    "weapon_gnome"
+};
+
+public void OnPluginStart()
+{
+    EngineVersion engine = GetEngineVersion();
+    if (engine != Engine_Left4Dead2)
+    {
+        SetFailState("This plugin only supports Left 4 Dead 2.");
+    }
+
+    g_cvEnable = CreateConVar(
+        "l4d_items_pass_enable", "1",
+        "1 = habilita el pase de items, 0 = deshabilita.",
+        FCVAR_NOTIFY, true, 0.0, true, 1.0);
+
+    g_cvPrimary = CreateConVar(
+        "l4d_items_pass_primary", "1",
+        "Permitir pasar armas principales.",
+        FCVAR_NOTIFY, true, 0.0, true, 1.0);
+
+    g_cvSecondary = CreateConVar(
+        "l4d_items_pass_secondary", "1",
+        "Permitir pasar armas secundarias.",
+        FCVAR_NOTIFY, true, 0.0, true, 1.0);
+
+    g_cvGrenades = CreateConVar(
+        "l4d_items_pass_grenades", "1",
+        "Permitir pasar granadas y arrojadizas.",
+        FCVAR_NOTIFY, true, 0.0, true, 1.0);
+
+    g_cvMedical = CreateConVar(
+        "l4d_items_pass_medical", "1",
+        "Permitir pasar botiquines y desfibriladores.",
+        FCVAR_NOTIFY, true, 0.0, true, 1.0);
+
+    g_cvPills = CreateConVar(
+        "l4d_items_pass_pills", "1",
+        "Permitir pasar pildoras y adrenalina.",
+        FCVAR_NOTIFY, true, 0.0, true, 1.0);
+
+    g_cvCarryables = CreateConVar(
+        "l4d_items_pass_carryables", "1",
+        "Permitir pasar objetos transportables.",
+        FCVAR_NOTIFY, true, 0.0, true, 1.0);
+
+    g_cvDistance = CreateConVar(
+        "l4d_items_pass_distance", "110.0",
+        "Distancia maxima entre supervivientes para pasar un item.",
+        FCVAR_NOTIFY, true, 32.0, true, 250.0);
+
+    g_cvCooldown = CreateConVar(
+        "l4d_items_pass_cooldown", "0.60",
+        "Tiempo minimo entre pases del mismo jugador.",
+        FCVAR_NOTIFY, true, 0.10, true, 3.0);
+
+    RegConsoleCmd("sm_pass", Cmd_PassHelp);
+    RegConsoleCmd("sm_passhelp", Cmd_PassHelp);
+    RegConsoleCmd("sm_pass_toggle", Cmd_PassToggle);
+
+    CreateTimer(10.0, Timer_GlobalReminder, _, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
+    CreateTimer(60.0, Timer_OwnerReminder, _, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
+
+    HookEvent("round_start", Event_RoundStart, EventHookMode_PostNoCopy);
+    HookEvent("player_disconnect", Event_PlayerDisconnect, EventHookMode_PostNoCopy);
+
+    AutoExecConfig(true, "l4d_items_carry_pass_extended");
+}
+
+public void OnMapStart()
+{
+    PrecacheSound("weapons/foley/metallic_dress_dropped_01.wav", true);
+}
+
+public void OnClientPutInServer(int client)
+{
+    ResetClientState(client);
+}
+
+public void Event_RoundStart(Event event, const char[] name, bool dontBroadcast)
+{
+    for (int i = 1; i <= MaxClients; i++)
+    {
+        ResetClientState(i);
+    }
+}
+
+public void Event_PlayerDisconnect(Event event, const char[] name, bool dontBroadcast)
+{
+    int client = GetClientOfUserId(event.GetInt("userid"));
+    if (client > 0)
+    {
+        ResetClientState(client);
+    }
+}
+
+void ResetClientState(int client)
+{
+    if (client < 1 || client > MaxClients)
+    {
+        return;
+    }
+
+    g_fNextPass[client] = 0.0;
+    g_fLastSpeed[client] = 0.0;
+    g_fLastAttack2[client] = 0.0;
+}
+
+public Action Cmd_PassHelp(int client, int args)
+{
+    if (client <= 0 || !IsClientInGame(client))
+    {
+        return Plugin_Handled;
+    }
+
+    PrintHintText(client, "Presiona SHIFT+CLICK DERECHO");
+    return Plugin_Handled;
+}
+
+public Action Timer_GlobalReminder(Handle timer)
+{
+    for (int i = 1; i <= MaxClients; i++)
+    {
+        if (!IsClientInGame(i) || IsClientInKickQueue(i))
+        {
+            continue;
+        }
+
+        PrintToChat(i, "[Pass] Comandos: !pass  !passhelp");
+        PrintHintText(i, "Presiona SHIFT+CLICK DERECHO");
+    }
+
+    return Plugin_Continue;
+}
+
+public Action Timer_OwnerReminder(Handle timer)
+{
+    int owner = GetListenServerHost();
+
+    if (owner > 0 && IsClientInGame(owner))
+    {
+        PrintToChat(owner, "[Pass] Owner: !pass_toggle");
+    }
+
+    return Plugin_Continue;
+}
+
+public Action Cmd_PassToggle(int client, int args)
+{
+    if (!IsListenServerHost(client))
+    {
+        return Plugin_Handled;
+    }
+
+    g_cvEnable.BoolValue = !g_cvEnable.BoolValue;
+    return Plugin_Handled;
+}
+
+int GetListenServerHost()
+{
+    if (IsClientInGame(1) && !IsClientInKickQueue(1))
+    {
+        return 1;
+    }
+
+    return 0;
+}
+
+public Action OnPlayerRunCmd(
+    int client,
+    int &buttons,
+    int &impulse,
+    float vel[3],
+    float angles[3],
+    int &weapon)
+{
+    if (!g_cvEnable.BoolValue || !IsValidSurvivor(client))
+    {
+        return Plugin_Continue;
+    }
+
+    float now = GetGameTime();
+
+    if (buttons & IN_SPEED)
+    {
+        g_fLastSpeed[client] = now;
+    }
+
+    if (buttons & IN_ATTACK2)
+    {
+        g_fLastAttack2[client] = now;
+    }
+
+    bool combo =
+        (g_fLastSpeed[client] + COMBO_WINDOW >= now) &&
+        (g_fLastAttack2[client] + COMBO_WINDOW >= now) &&
+        (now >= g_fNextPass[client]);
+
+    if (!combo)
+    {
+        return Plugin_Continue;
+    }
+
+    int target = GetClientAimTarget(client, true);
+    if (!IsValidSurvivor(target) || target == client)
+    {
+        return Plugin_Continue;
+    }
+
+    if (!IsWithinPassDistance(client, target))
+    {
+        return Plugin_Continue;
+    }
+
+    if (!HasClearLine(client, target))
+    {
+        return Plugin_Continue;
+    }
+
+    int activeWeapon = GetEntPropEnt(client, Prop_Send, "m_hActiveWeapon");
+    if (activeWeapon <= MaxClients || !IsValidEntity(activeWeapon))
+    {
+        return Plugin_Continue;
+    }
+
+    char classname[64];
+    GetEntityClassname(activeWeapon, classname, sizeof(classname));
+
+    g_fNextPass[client] = now + g_cvCooldown.FloatValue;
+
+    bool passed = false;
+
+    if (IsCarryableItem(classname))
+    {
+        if (g_cvCarryables.BoolValue)
+        {
+            passed = DoCarryablePass(client, target, activeWeapon);
+        }
+    }
+    else if (IsSupportedWeapon(classname))
+    {
+        int slot = GetWeaponSlot(classname);
+        if (IsSlotEnabled(slot))
+        {
+            passed = DoWeaponPass(client, target, activeWeapon, slot);
+        }
+    }
+
+    if (passed)
+    {
+        buttons &= ~IN_ATTACK2;
+        g_fLastAttack2[client] = 0.0;
+        g_fLastSpeed[client] = 0.0;
+        return Plugin_Changed;
+    }
+
+    return Plugin_Continue;
+}
+
+bool IsValidSurvivor(int client)
+{
+    return client >= 1 &&
+           client <= MaxClients &&
+           IsClientInGame(client) &&
+           IsPlayerAlive(client) &&
+           GetClientTeam(client) == TEAM_SURVIVOR &&
+           !IsClientInKickQueue(client);
+}
+
+bool IsListenServerHost(int client)
+{
+    if (client <= 0 || client > MaxClients || !IsClientInGame(client))
+    {
+        return false;
+    }
+
+    // En un Listen Server de L4D2, el host es el cliente 1.
+    return client == 1;
+}
+
+bool IsWithinPassDistance(int client, int target)
+{
+    float a[3], b[3];
+    GetClientEyePosition(client, a);
+    GetClientEyePosition(target, b);
+
+    return GetVectorDistance(a, b) <= g_cvDistance.FloatValue;
+}
+
+bool HasClearLine(int client, int target)
+{
+    float start[3], end[3];
+    GetClientEyePosition(client, start);
+    GetClientEyePosition(target, end);
+
+    Handle trace = TR_TraceRayFilterEx(
+        start,
+        end,
+        MASK_PLAYERSOLID,
+        RayType_EndPoint,
+        TraceFilter_IgnoreClients);
+
+    bool blocked = TR_DidHit(trace);
+    delete trace;
+
+    return !blocked;
+}
+
+public bool TraceFilter_IgnoreClients(int entity, int contentsMask, any data)
+{
+    return entity > MaxClients;
+}
+
+bool IsCarryableItem(const char[] classname)
+{
+    for (int i = 0; i < sizeof(g_sCarryableItems); i++)
+    {
+        if (StrEqual(classname, g_sCarryableItems[i]))
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool IsSupportedWeapon(const char[] classname)
+{
+    if (StrEqual(classname, "weapon_molotov") ||
+        StrEqual(classname, "weapon_pipe_bomb") ||
+        StrEqual(classname, "weapon_vomitjar") ||
+        StrEqual(classname, "weapon_first_aid_kit") ||
+        StrEqual(classname, "weapon_defibrillator") ||
+        StrEqual(classname, "weapon_pain_pills") ||
+        StrEqual(classname, "weapon_adrenaline") ||
+        StrContains(classname, "pistol") != -1 ||
+        StrContains(classname, "melee") != -1 ||
+        StrEqual(classname, "weapon_chainsaw"))
+    {
+        return true;
+    }
+
+    return StrContains(classname, "weapon_") == 0;
+}
+
+bool IsSlotEnabled(int slot)
+{
+    switch (slot)
+    {
+        case 0: return g_cvPrimary.BoolValue;
+        case 1: return g_cvSecondary.BoolValue;
+        case 2: return g_cvGrenades.BoolValue;
+        case 3: return g_cvMedical.BoolValue;
+        case 4: return g_cvPills.BoolValue;
+    }
+
+    return false;
+}
+
+bool DoWeaponPass(int giver, int receiver, int giverWeapon, int slot)
+{
+    if (!IsValidEntity(giverWeapon) ||
+        !IsValidSurvivor(giver) ||
+        !IsValidSurvivor(receiver))
+    {
+        return false;
+    }
+
+    int receiverWeapon = GetPlayerWeaponSlot(receiver, slot);
+    bool swap = receiverWeapon > MaxClients && IsValidEntity(receiverWeapon);
+
+    if (swap && receiverWeapon == giverWeapon)
+    {
+        return false;
+    }
+
+    // Guardamos municion antes de tocar las armas.
+    int giverClip = GetSafeProp(giverWeapon, Prop_Send, "m_iClip1", 0);
+    int giverAmmoType = GetSafeProp(giverWeapon, Prop_Send, "m_iPrimaryAmmoType", -1);
+    int giverReserve = GetAmmo(giver, giverAmmoType);
+
+    int receiverClip = 0;
+    int receiverAmmoType = -1;
+    int receiverReserve = 0;
+
+    if (swap)
+    {
+        receiverClip = GetSafeProp(receiverWeapon, Prop_Send, "m_iClip1", 0);
+        receiverAmmoType = GetSafeProp(receiverWeapon, Prop_Send, "m_iPrimaryAmmoType", -1);
+        receiverReserve = GetAmmo(receiver, receiverAmmoType);
+    }
+
+    // Primero soltamos el arma del receptor si hay intercambio.
+    if (swap)
+    {
+        if (!DropWeaponSafe(receiver, receiverWeapon))
+        {
+            return false;
+        }
+    }
+
+    if (!DropWeaponSafe(giver, giverWeapon))
+    {
+        // Intentamos devolver el arma del receptor si el segundo drop fallo.
+        if (swap && IsValidEntity(receiverWeapon))
+        {
+            EquipPlayerWeapon(receiver, receiverWeapon);
+        }
+        return false;
+    }
+
+    // Entregamos el arma del giver.
+    EquipPlayerWeapon(receiver, giverWeapon);
+
+    // Si el receptor tenia arma del mismo slot, se la damos al giver.
+    if (swap && IsValidEntity(receiverWeapon))
+    {
+        EquipPlayerWeapon(giver, receiverWeapon);
+    }
+
+    RestoreWeaponState(receiver, giverWeapon, giverClip, giverAmmoType, giverReserve);
+
+    if (swap && IsValidEntity(receiverWeapon))
+    {
+        RestoreWeaponState(giver, receiverWeapon, receiverClip, receiverAmmoType, receiverReserve);
+    }
+
+    EmitPassSound(receiver);
+    return true;
+}
+
+bool DoCarryablePass(int giver, int receiver, int objectEnt)
+{
+    if (!IsValidEntity(objectEnt) ||
+        !IsValidSurvivor(giver) ||
+        !IsValidSurvivor(receiver))
+    {
+        return false;
+    }
+
+    int receiverActive = GetEntPropEnt(receiver, Prop_Send, "m_hActiveWeapon");
+    if (receiverActive > MaxClients && IsValidEntity(receiverActive))
+    {
+        char receiverClass[64];
+        GetEntityClassname(receiverActive, receiverClass, sizeof(receiverClass));
+
+        if (IsCarryableItem(receiverClass))
+        {
+            return false;
+        }
+    }
+
+    if (!DropWeaponSafe(giver, objectEnt))
+    {
+        return false;
+    }
+
+    DataPack pack = new DataPack();
+    pack.WriteCell(EntIndexToEntRef(objectEnt));
+    pack.WriteCell(GetClientUserId(receiver));
+    pack.WriteCell(GetClientUserId(giver));
+
+    CreateTimer(0.0, Timer_EquipCarryable, pack, TIMER_FLAG_NO_MAPCHANGE);
+
+    EmitPassSound(receiver);
+    return true;
+}
+
+public Action Timer_EquipCarryable(Handle timer, DataPack pack)
+{
+    pack.Reset();
+
+    int objectRef = pack.ReadCell();
+    int receiverUserId = pack.ReadCell();
+    int giverUserId = pack.ReadCell();
+    delete pack;
+
+    int objectEnt = EntRefToEntIndex(objectRef);
+    int receiver = GetClientOfUserId(receiverUserId);
+    int giver = GetClientOfUserId(giverUserId);
+
+    if (objectEnt <= MaxClients || !IsValidEntity(objectEnt) || !IsValidSurvivor(receiver))
+    {
+        return Plugin_Stop;
+    }
+
+    EquipPlayerWeapon(receiver, objectEnt);
+
+    if (giver > 0 && IsClientInGame(giver))
+    {
+        }
+
+    return Plugin_Stop;
+}
+
+bool DropWeaponSafe(int client, int entity)
+{
+    if (!IsValidSurvivor(client) || entity <= MaxClients || !IsValidEntity(entity))
+    {
+        return false;
+    }
+
+    int owner = -1;
+    if (HasEntProp(entity, Prop_Send, "m_hOwnerEntity"))
+    {
+        owner = GetEntPropEnt(entity, Prop_Send, "m_hOwnerEntity");
+    }
+
+    if (owner != client)
+    {
+        // Algunos carryables no mantienen m_hOwnerEntity de forma consistente.
+        int active = GetEntPropEnt(client, Prop_Send, "m_hActiveWeapon");
+        if (active != entity)
+        {
+            return false;
+        }
+    }
+
+    SDKHooks_DropWeapon(client, entity, NULL_VECTOR, NULL_VECTOR, true);
+    return true;
+}
+
+void RestoreWeaponState(int client, int weapon, int clip, int ammoType, int reserve)
+{
+    if (!IsValidSurvivor(client) || !IsValidEntity(weapon))
+    {
+        return;
+    }
+
+    if (HasEntProp(weapon, Prop_Send, "m_iClip1"))
+    {
+        SetEntProp(weapon, Prop_Send, "m_iClip1", clip);
+    }
+
+    if (ammoType >= 0)
+    {
+        SetAmmo(client, ammoType, reserve);
+    }
+}
+
+int GetAmmo(int client, int ammoType)
+{
+    if (!IsValidSurvivor(client) || ammoType < 0)
+    {
+        return 0;
+    }
+
+    return GetEntProp(client, Prop_Send, "m_iAmmo", _, ammoType);
+}
+
+void SetAmmo(int client, int ammoType, int amount)
+{
+    if (!IsValidSurvivor(client) || ammoType < 0)
+    {
+        return;
+    }
+
+    SetEntProp(client, Prop_Send, "m_iAmmo", amount, _, ammoType);
+}
+
+int GetSafeProp(int entity, PropType type, const char[] prop, int fallback)
+{
+    if (!IsValidEntity(entity) || !HasEntProp(entity, type, prop))
+    {
+        return fallback;
+    }
+
+    return GetEntProp(entity, type, prop);
+}
+
+void EmitPassSound(int client)
+{
+    if (client > 0 && IsClientInGame(client))
+    {
+        EmitSoundToAll(
+            "weapons/foley/metallic_dress_dropped_01.wav",
+            client,
+            SNDCHAN_AUTO,
+            SNDLEVEL_NORMAL);
+    }
+}
+
+int GetWeaponSlot(const char[] classname)
+{
+    if (StrEqual(classname, "weapon_molotov") ||
+        StrEqual(classname, "weapon_pipe_bomb") ||
+        StrEqual(classname, "weapon_vomitjar"))
+    {
+        return 2;
+    }
+
+    if (StrEqual(classname, "weapon_first_aid_kit") ||
+        StrEqual(classname, "weapon_defibrillator"))
+    {
+        return 3;
+    }
+
+    if (StrEqual(classname, "weapon_pain_pills") ||
+        StrEqual(classname, "weapon_adrenaline"))
+    {
+        return 4;
+    }
+
+    if (StrContains(classname, "pistol") != -1 ||
+        StrContains(classname, "melee") != -1 ||
+        StrEqual(classname, "weapon_chainsaw"))
+    {
+        return 1;
+    }
+
+    if (StrContains(classname, "weapon_") == 0)
+    {
+        return 0;
+    }
+
+    return -1;
+}
